@@ -2,7 +2,7 @@
 
 **Liquid Glass for [Caelestia](https://github.com/caelestia-dots/shell) on Hyprland.**
 
-Applestia is a flavour of the Caelestia shell with Apple-style *Liquid Glass*: clear (not frosted) glass that bends the
+Applestia is a flavour of the Caelestia shell with *Liquid Glass*: clear (not frosted) glass that bends the
 light at its edges, refined controls, SF-style typography, and menus that flow out of the button that opened them.
 It keeps Caelestia's layout and motion: the left bar, the screen frame, panels that open on hover, and the same
 animation curves.
