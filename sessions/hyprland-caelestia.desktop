@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Hyprland (Caelestia)
+Comment=Hyprland with the Caelestia shell
+Exec=@BINDIR@/applestia-session caelestia
+Type=Application
+DesktopNames=Hyprland

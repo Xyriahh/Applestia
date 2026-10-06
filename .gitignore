@@ -1,0 +1,8 @@
+# build outputs
+module/build/
+plugin/*.so
+plugin/**/*.o
+plugin/**/*.so
+plugin/build/
+plugin/src/item-helper/hyprglass-item-v1-server-protocol.h
+plugin/src/item-helper/hyprglass-item-v1-protocol.c

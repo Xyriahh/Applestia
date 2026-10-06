@@ -1,0 +1,5 @@
+#!/bin/sh
+# Greeter session entry point: store the chosen flavour, then start Hyprland.
+# Installed sessions: /usr/share/wayland-sessions/hyprland-{applestia,caelestia}.desktop
+"$HOME/.local/bin/applestia-switch" "${1:-caelestia}" --no-restart || "$HOME/.local/bin/applestia-switch" caelestia --no-restart
+exec /usr/bin/start-hyprland

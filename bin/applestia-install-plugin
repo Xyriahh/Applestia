@@ -1,0 +1,18 @@
+#!/bin/sh
+# Install a hyprglass build for Applestia WITHOUT touching a copy Hyprland may
+# have loaded. Never `cp` over the installed .so: cp rewrites the same inode and
+# the running compositor's mapped code changes under it (SIGSEGV, 2026-10-04).
+# A rename gives the new build a new inode; the loaded one stays intact until
+# Hyprland exits.
+set -eu
+src=${1:-$HOME/src/hyprglass/hyprglass.so}
+dir=$HOME/.local/lib/applestia
+mkdir -p "$dir"
+tmp=$(mktemp "$dir/.hyprglass.so.XXXXXX")
+cp "$src" "$tmp"
+chmod 755 "$tmp"
+mv -f "$tmp" "$dir/hyprglass.so"
+echo "installed $(sha256sum "$dir/hyprglass.so" | cut -c1-12) -> $dir/hyprglass.so"
+if hyprctl plugin list 2>/dev/null | grep -qi hyprglass; then
+    echo "note: Hyprland still runs the previously loaded build until it restarts"
+fi

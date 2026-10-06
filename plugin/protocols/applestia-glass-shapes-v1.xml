@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="applestia_glass_shapes_v1">
+  <copyright>
+    Copyright © 2026 the hyprglass contributors
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="applestia_glass_shapes_manager_v1" version="1">
+    <description summary="per-surface compositor glass shapes">
+      Optional rendering hints. Withdrawal of this global makes its existing
+      managers and shapes objects permanently inert; clients must rebind a new
+      global to resume. In-flight requests remain valid no-ops, not errors.
+    </description>
+    <request name="destroy" type="destructor"/>
+    <request name="get_shapes">
+      <description summary="associate shapes with a surface">
+        At most one active object is associated with a surface. A duplicate
+        request creates an inert object rather than disconnecting the client.
+        The initial list is empty. Destroying the surface makes this object inert.
+      </description>
+      <arg name="id" type="new_id" interface="applestia_glass_shapes_v1"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+    <event name="finished">
+      <description summary="this manager and its shapes are now inert">
+        The compositor has withdrawn this generation of the protocol global.
+        Clients should release their objects and wait for a new global.
+      </description>
+    </event>
+  </interface>
+  <interface name="applestia_glass_shapes_v1" version="1">
+    <description summary="double-buffered glass shapes for a surface">
+      All geometry is in surface-local logical pixels. Pending state is
+      snapshotted on wl_surface.commit and latched only when that commit is
+      applied, including synchronized subsurface ancestor-commit timing.
+      Requests never commit the surface themselves. Values are sanitized as
+      hints, never rejected with protocol errors. The maximum list size is 128.
+    </description>
+    <request name="destroy" type="destructor">
+      <description summary="release this association">
+        Discards pending and committed hints immediately. Other shapes objects
+        are unaffected; a new active object may now be obtained for the surface.
+      </description>
+    </request>
+    <request name="begin">
+      <description summary="begin a replacement pending list">
+        Clears the pending list only. Existing committed shapes remain until
+        the surface's next applied commit. Subsequent add_shape requests append.
+        Resets the optional clip/opacity annotation target.
+      </description>
+    </request>
+    <request name="add_shape">
+      <description summary="append a pending rounded rectangle">
+        Nonpositive sizes are ignored; coordinates and sizes are bounded to
+        sane compositor limits. Negative radii become zero; all radii scale
+        proportionally by the CSS border-radius rule to prevent overlap.
+        Depth is bounded, tint is RGBA8888, and unknown/invalid preset names
+        fall back to compositor defaults. Shapes beyond the cap are ignored.
+        New shapes have opacity one and no additional clip.
+        If this add is ignored, subsequent set_clip/set_opacity requests are
+        no-ops until another add_shape is accepted; they cannot annotate an
+        earlier shape still in the pending list.
+      </description>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+      <arg name="width" type="fixed"/>
+      <arg name="height" type="fixed"/>
+      <arg name="radius_top_left" type="fixed"/>
+      <arg name="radius_top_right" type="fixed"/>
+      <arg name="radius_bottom_right" type="fixed"/>
+      <arg name="radius_bottom_left" type="fixed"/>
+      <arg name="depth" type="uint"/>
+      <arg name="tint" type="uint"/>
+      <arg name="preset" type="string"/>
+    </request>
+    <request name="clear">
+      <description summary="clear the pending list">
+        Equivalent to begin. An empty committed list explicitly means no shapes.
+        Resets the optional clip/opacity annotation target.
+      </description>
+    </request>
+    <!-- These optional annotations preserve the original lens geometry while
+         an ancestor clips it, and fade the lens together with a fading panel. -->
+    <request name="set_clip">
+      <description summary="flat clip for the last pending shape">
+        Optional annotation for the most recent add_shape, if accepted; no-op
+        after a rejected add_shape or begin/clear until a new add is accepted.
+        This rectangle
+        clips the original rounded shape without inventing rounded lens edges
+        at the clipping boundary. Nonpositive extents make the clip empty.
+      </description>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+      <arg name="width" type="fixed"/>
+      <arg name="height" type="fixed"/>
+    </request>
+    <request name="set_opacity">
+      <description summary="opacity for the last pending shape">
+        Optional annotation for the most recent add_shape, if accepted; no-op
+        after a rejected add_shape or begin/clear until a new add is accepted.
+        Clamped to
+        zero through one; fades refraction and specular as well as the tint.
+      </description>
+      <arg name="opacity" type="fixed"/>
+    </request>
+  </interface>
+</protocol>

@@ -1,0 +1,138 @@
+#!/bin/sh
+# Switch the shell between stock Caelestia and the Applestia (Liquid Glass) flavour.
+# Works from a terminal, over SSH, or from the shell itself (the "Shell style" card).
+#
+#   applestia-switch caelestia|applestia|toggle|status|safe [--no-restart]
+#
+# `safe` is the recovery command: back to Caelestia, and the glass plugin is not
+# loaded on the next Hyprland start.
+
+set -u
+
+QS_DIR=$HOME/.config/quickshell
+STATE=$HOME/.local/state/applestia
+PLUGIN=$HOME/.local/lib/applestia/hyprglass.so
+HYPR_LUA=$HOME/.config/caelestia/applestia-hypr.lua
+
+mkdir -p "$STATE"
+export QML_IMPORT_PATH="$HOME/.local/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
+
+say() { printf 'applestia-switch: %s\n' "$*"; }
+
+current_mode() {
+    m=$(cat "$STATE/mode" 2>/dev/null)
+    [ "$m" = applestia ] && echo applestia || echo caelestia
+}
+
+# Over SSH (or from a TTY) none of the compositor variables are inherited:
+# pick up this user's running Hyprland instance.
+have_hypr=0
+if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    sig=$(ls -t "$XDG_RUNTIME_DIR/hypr" 2>/dev/null | head -n1)
+    if [ -n "$sig" ]; then
+        export HYPRLAND_INSTANCE_SIGNATURE="$sig"
+        sock=$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -m1 '^wayland-[0-9]*$')
+        [ -n "$sock" ] && export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-$sock}"
+    fi
+fi
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && hyprctl version >/dev/null 2>&1 && have_hypr=1
+
+plugin_loaded() {
+    [ $have_hypr = 1 ] && hyprctl plugin list 2>/dev/null | grep -qi hyprglass
+}
+
+shell_running() {
+    qs -c caelestia list 2>/dev/null | grep -q 'Instance'
+}
+
+point_symlink() {
+    ln -sfn "flavours/$1" "$QS_DIR/caelestia"
+}
+
+restart_shell() {
+    [ $have_hypr = 1 ] || { say "no running Hyprland; shell not restarted"; return; }
+    qs -c caelestia kill >/dev/null 2>&1
+    sleep 1
+    # Detach fully so the shell survives this script (and an SSH logout).
+    setsid -f caelestia shell -d >/dev/null 2>&1
+    say "shell restarted"
+}
+
+# Re-run the Hyprland side so layer rules / plugin config match the mode.
+apply_hypr() {
+    [ $have_hypr = 1 ] || return
+    [ -r "$HYPR_LUA" ] || return
+    hyprctl eval "dofile(\"$HYPR_LUA\")" >/dev/null 2>&1 || say "warning: applying $HYPR_LUA failed"
+}
+
+to_caelestia() {
+    echo caelestia >"$STATE/mode"
+    point_symlink caelestia
+    if plugin_loaded; then
+        # Never unload the plugin live (crash-prone); just switch it off.
+        hyprctl eval 'if hl.plugin.hyprglass then hl.plugin.hyprglass.config({ enabled = false, layers = { enabled = false } }) end' >/dev/null 2>&1
+    fi
+    apply_hypr
+    say "mode: caelestia"
+    [ "$no_restart" = 1 ] || restart_shell
+}
+
+to_applestia() {
+    if [ ! -e "$STATE/plugin-approved" ]; then
+        say "refused: the glass plugin has not been approved for the live session yet"
+        say "(touch $STATE/plugin-approved once nested testing passed and the owner agreed)"
+        exit 1
+    fi
+    if [ ! -d "$QS_DIR/flavours/applestia" ]; then
+        say "refused: $QS_DIR/flavours/applestia is missing"
+        exit 1
+    fi
+    echo applestia >"$STATE/mode"
+    rm -f "$STATE/skip-plugin"
+    point_symlink applestia
+    if [ $have_hypr = 1 ] && ! plugin_loaded; then
+        # Load from here: hl.plugin.load does nothing inside `hyprctl eval`.
+        # Boot-guard markers as at startup (see applestia-hypr.lua).
+        : >"$STATE/loading"
+        date +%s >"$STATE/plugin-loaded-at"
+        hyprctl plugin load "$PLUGIN" >/dev/null || { say "plugin load failed"; rm -f "$STATE/loading"; to_caelestia; exit 1; }
+        (sleep 90; rm -f "$STATE/loading") >/dev/null 2>&1 &
+    fi
+    # With the plugin present, applestia-hypr.lua applies the glass settings.
+    apply_hypr
+    say "mode: applestia"
+    [ "$no_restart" = 1 ] || restart_shell
+}
+
+status() {
+    echo "mode:      $(current_mode)"
+    echo "symlink:   $(readlink "$QS_DIR/caelestia" 2>/dev/null || echo 'MISSING (not a symlink)')"
+    if [ $have_hypr = 1 ]; then
+        plugin_loaded && echo "plugin:    loaded" || echo "plugin:    not loaded"
+        shell_running && echo "shell:     running" || echo "shell:     NOT running"
+    else
+        echo "hyprland:  not reachable"
+    fi
+    [ -e "$STATE/plugin-approved" ] && echo "approved:  yes" || echo "approved:  no (applestia mode refused)"
+    [ -e "$STATE/skip-plugin" ] && echo "flag:      skip-plugin (plugin will not load at next start)"
+    [ -e "$STATE/loading" ] && echo "flag:      loading (boot guard armed)"
+    return 0
+}
+
+cmd=${1:-status}
+no_restart=0
+[ "${2:-}" = --no-restart ] && no_restart=1
+
+case $cmd in
+    caelestia) to_caelestia ;;
+    applestia) to_applestia ;;
+    toggle) [ "$(current_mode)" = applestia ] && to_caelestia || to_applestia ;;
+    safe)
+        touch "$STATE/skip-plugin"
+        to_caelestia
+        say "safe mode: plugin will not be loaded on the next Hyprland start"
+        ;;
+    status) status ;;
+    *) echo "usage: applestia-switch caelestia|applestia|toggle|status|safe [--no-restart]" >&2; exit 2 ;;
+esac
